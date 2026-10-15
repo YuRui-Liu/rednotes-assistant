@@ -5,6 +5,9 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { AppError } from "./store.mjs";
 import { downloadPinned } from "./image-download.mjs";
+import { ServiceConfig } from "./config.mjs";
+import { runRuntime, checkRuntime } from "./runtime.mjs";
+import { ShopSync } from "./shop-sync.mjs";
 
 const bad = (message, code = "VALIDATION", status = 400) => {
   throw new AppError(message, code, status);
@@ -108,10 +111,15 @@ export class Services {
       env = process.env,
       fetch = globalThis.fetch,
       resolveHost = lookup,
+      configPath = null,
+      shopReader,
     } = {},
   ) {
     this.store = store;
-    this.env = env;
+    this.shopSync = new ShopSync(store, shopReader);
+    this.config = new ServiceConfig(configPath, env);
+    const keys = { LLM_BASE_URL: 'llmBaseUrl', LLM_API_KEY: 'llmApiKey', GRSAI_BASE_URL: 'grsaiBaseUrl', GRSAI_API_KEY: 'grsaiApiKey' };
+    this.env = new Proxy(env, { get: (target, key) => keys[key] ? this.config.value[keys[key]] : target[key] });
     this.fetch = fetch;
     this.resolveHost = resolveHost;
     this.assets = new Assets(assetsDir);
@@ -158,7 +166,7 @@ export class Services {
         "dailySlots",
       ];
       if (Object.keys(input).some((k) => !allowed.includes(k)))
-        bad("设置字段不支持；密钥仅通过环境变量配置");
+        bad("设置字段不支持；请在服务配置中保存密钥");
       saved = { ...saved, ...input };
       for (const key of ["topicCount", "targetCount", "maxImages"])
         if (
@@ -188,7 +196,7 @@ export class Services {
   health() {
     return {
       status: "ok",
-      llmConfigured: Boolean(
+      llmConfigured: this.config.value.provider !== 'api' ? Boolean(this.config.value[this.config.value.provider + 'Path']) : Boolean(
         this.env.LLM_BASE_URL &&
         this.env.LLM_API_KEY &&
         this.settings().llmModel,
@@ -208,6 +216,22 @@ export class Services {
     };
   }
   async route({ method, kind, id, action, body: b }) {
+    if (kind === 'accounts' && id && method === 'POST' && action === 'shop-preview')
+      return this.shopSync.preview(id);
+    if (kind === 'accounts' && id && method === 'POST' && action === 'shop-import')
+      return this.shopSync.import(id, b.token);
+    if (kind === 'config') {
+      if (!id && method === 'GET') return this.config.public();
+      if (!id && method === 'PATCH') {
+        if (this.busy || this.store.list('jobs').some(j => ['queued','writing','submitting','submitted','processing'].includes(j.status) || (j.taskId && !j.assetUrl && !j.finishedAt && ['unknown','stale'].includes(j.status))))
+          bad('请等待生成任务结束后再更换服务配置');
+        return this.config.update(b);
+      }
+      if (id === 'check' && method === 'POST') {
+        if (this.config.value.provider !== 'api') return checkRuntime(this.config.value);
+        return { ok: this.health().llmConfigured, message: this.health().llmConfigured ? 'API 必填配置齐全；尚未发起模型请求，连接与鉴权未验证' : '请填写 LLM 地址、密钥及文案模型' };
+      }
+    }
     if (kind === "settings" && !id) {
       if (method === "GET") return this.settings();
       if (method === "PATCH") return this.settings(b);
@@ -490,9 +514,10 @@ export class Services {
     return this.assets.save(Buffer.concat(chunks));
   }
   async llm(system, input) {
+    if (this.config.value.provider !== 'api') return runRuntime({ ...this.config.value }, system, input);
     const s = this.settings();
     if (!this.env.LLM_BASE_URL || !this.env.LLM_API_KEY || !s.llmModel)
-      bad("LLM 未配置，请配置环境变量或选择手工草稿", "DISCONNECTED", 503);
+      bad("LLM 未配置，请填写服务配置或选择手工草稿", "DISCONNECTED", 503);
     const base = this.env.LLM_BASE_URL.replace(/\/$/, "");
     const result = await this.json(`${base}/chat/completions`, {
       method: "POST",
@@ -632,6 +657,7 @@ export class Services {
       bad("GRSai 未配置", "DISCONNECTED", 503);
     if (
       textProvider === "llm" &&
+      this.config.value.provider === 'api' &&
       (!this.env.LLM_BASE_URL ||
         !this.env.LLM_API_KEY ||
         !this.settings().llmModel)

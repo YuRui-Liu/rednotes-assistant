@@ -1,0 +1,23 @@
+/* Product library: one action group per state, with a compact visual hierarchy. */
+.products-page { max-width: 1160px; margin: 0 auto; }
+.products-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 0 0 28px; }
+.products-title { display: flex; align-items: center; gap: 12px; }
+.products-title h1 { font-size: 26px; letter-spacing: -.5px; }
+.product-count { font-size: 12px; color: var(--sub); border-left: 1px solid var(--line); padding-left: 12px; line-height: 18px; }
+.products-heading p { font-size: 13px; color: var(--sub); margin: 8px 0 0; }
+.products-page button { min-height: 40px; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; box-shadow: none; white-space: nowrap; }
+.products-empty { display: flex; flex-direction: column; align-items: center; padding: 52px 24px 44px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; text-align: center; }
+.products-empty-icon { width: 60px; height: 60px; display: grid; place-items: center; background: #f7f5f2; color: #a38a7d; border-radius: 18px; margin-bottom: 20px; }
+.products-empty h2 { font-size: 20px; font-weight: 600; letter-spacing: -.3px; }
+.products-empty p { color: var(--sub); font-size: 13px; line-height: 1.9; margin: 10px 0 24px; }
+.products-empty-actions { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px; }
+.products-empty-actions button { min-width: 112px; }
+.products-empty-note { font-size: 11px; color: var(--sub); line-height: 1.7; margin-top: 18px; }
+@media (max-width: 600px) {
+  .products-heading { flex-direction: column; align-items: flex-start; gap: 16px; margin-bottom: 22px; }
+  .products-title h1 { font-size: 24px; }
+  .products-empty { padding: 38px 18px 32px; }
+  .products-empty-actions { width: 100%; gap: 10px; }
+  .products-empty-actions button { flex: 1; min-width: 0; min-height: 44px; }
+  .products-heading .actions { width: 100%; }
+}
